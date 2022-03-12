@@ -28,7 +28,7 @@ conda activate qbo1d
 
 
 ## Documentation
-Please refer to the [Documentation](https://ofershamir.github.io/qbo1d/).
+Please refer to the [Documentation](https://datawaveproject.github.io/qbo1d/).
 
 
 <p align="right">(<a href="#top">back to top</a>)</p>
