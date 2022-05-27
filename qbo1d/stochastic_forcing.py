@@ -78,6 +78,8 @@ class WaveSpectrum(torch.nn.Module):
     ----------
     solver : ADSolver
         A solver instance holding the grid and differentiation matrix
+    Gsa : float, optional
+        Amplitude of semi-annual oscillation [:math:`\mathrm{m \, s^{-2}}`], by default 0
     sfe : float, optional
         Total source flux mean, by default 3.7e-3
     sfv : float, optional
@@ -97,6 +99,8 @@ class WaveSpectrum(torch.nn.Module):
         An interface for keeping track of the function g in the analytic forcing
     F_func : func
         An interface for keeping track of the function F in the analytic forcing
+    G_func : func
+        An interface for keeping track of the semi-annual oscillation
     sf : tensor
         A realization of surface fluxes for each timestep
     cw : tensor
@@ -109,7 +113,7 @@ class WaveSpectrum(torch.nn.Module):
         Wave amplitudes
     """
 
-    def __init__(self, solver,
+    def __init__(self, solver, Gsa=0,
         sfe=3.7e-3, sfv=1e-8, cwe=32, cwv=225, corr=0.75, seed=int(21*9+8)):
         super().__init__()
 
@@ -124,6 +128,7 @@ class WaveSpectrum(torch.nn.Module):
         self._alpha = utils.get_alpha(self._z)
 
         self._current_step = 0
+        self._current_time = solver.current_time
 
         # keep track of source
         self.s = torch.zeros((self._nsteps, self._nlev))
@@ -133,7 +138,7 @@ class WaveSpectrum(torch.nn.Module):
         sfe=sfe, sfv=sfv, cwe=cwe, cwv=cwv, corr=corr, seed=seed)
 
         # wavenumbers and phase speeds
-        self.ks = 2 * 2 * np.pi / 4e7 * torch.ones(20)
+        self.ks = 2 * 2 * torch.pi / 4e7 * torch.ones(20)
         self.cs = torch.hstack([torch.arange(-100., 0., 10.),
         torch.arange(10., 110., 10.)])
 
@@ -152,6 +157,11 @@ class WaveSpectrum(torch.nn.Module):
             torch.cumulative_trapezoid(g, dx=solver.dz)
             ))))
 
+        self.G_func = lambda z, t : torch.where(
+            (28e3 <= z) & (z <= 35e3),
+            (Gsa * 2 * (z - 28e3) * 1e-3 * 2 * torch.pi / 180 / 86400 *
+            torch.sin(2 * torch.pi / 180 / 86400 * t)),
+            torch.zeros(1))
 
     def forward(self, u):
         """An interface for calculating the source term as a function of u. By
@@ -174,7 +184,9 @@ class WaveSpectrum(torch.nn.Module):
             F = self.F_func(A, g)
             Ftot += F
 
-        s = torch.matmul(self._D1, Ftot) * self._rho[0] / self._rho
+        G = self.G_func(self._z, self._current_time)
+
+        s = torch.matmul(self._D1, Ftot) * self._rho[0] / self._rho - G
         self.s[self._current_step, :] = s
 
         self._current_step += 1

@@ -1,4 +1,3 @@
-from numpy import pi as PI
 import torch
 
 from . import utils
@@ -42,7 +41,7 @@ class WaveSpectrum(torch.nn.Module):
         if cs is None:
             cs = torch.tensor([32, -32])
         if ks is None:
-            ks = (1 * 2 * PI / 4e7) * torch.ones(2)
+            ks = (1 * 2 * torch.pi / 4e7) * torch.ones(2)
 
         self.As = As
         self.cs = cs
@@ -60,8 +59,11 @@ class WaveSpectrum(torch.nn.Module):
             torch.cumulative_trapezoid(g, dx=solver.dz)
             ))))
 
-        self.G_func = lambda z, t : (Gsa * 2 * (z - 28e3) * 1e-3 * 2 * PI /
-        180 / 86400 * torch.sin(2 * PI / 180 / 86400 * t))
+        self.G_func = lambda z, t : torch.where(
+            (28e3 <= z) & (z <= 35e3),
+            (Gsa * 2 * (z - 28e3) * 1e-3 * 2 * torch.pi / 180 / 86400 *
+            torch.sin(2 * torch.pi / 180 / 86400 * t)),
+            torch.zeros(1))
 
     def forward(self, u):
         """An interface for calculating the source term as a function of u. By
@@ -84,9 +86,7 @@ class WaveSpectrum(torch.nn.Module):
             F = self.F_func(A, g)
             Ftot += F
 
-        G = torch.zeros(self.z.shape)
-        idx = (28e3 <= self.z) & (self.z <= 35e3)
-        G[idx] = self.G_func(self.z[idx], self.current_time)
+        G = self.G_func(self.z, self.current_time)
 
         return torch.matmul(self.D1, Ftot) * self.rho[0] / self.rho - G
 
