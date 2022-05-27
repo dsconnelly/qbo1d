@@ -21,8 +21,10 @@ class ADSolver:
         Final time [s], by default 360*12*86400
     dt : float, optional
         Timestep [s], by default 86400
-    w : float, optional
-        Constant vertical advection [:math:`\mathrm{m \, s^{-1}}`], by default 1e-5
+    w : float/tensor, optional
+        Vertical advection [:math:`\mathrm{m \, s^{-1}}`], by default 0.
+        Can be constant (scalar), time-dependent (tensor with size time.shape),
+        or time- and height-dependent (tensor of size time.shape, z.shape).
     kappa : float, optional
         Constant diffusivity [:math:`\mathrm{m^{2} \, s^{-1}}`], by default 3e-1
     initial_condition : tensor, optional
@@ -41,7 +43,7 @@ class ADSolver:
     """
 
     def __init__(self, z_min=17e3, z_max=35e3, dz=250, t_min=0,
-    t_max=360*12*86400, dt=86400, w=1e-5, kappa=3e-1, initial_condition=None):
+    t_max=360*12*86400, dt=86400, w=0, kappa=3e-1, initial_condition=None):
 
         self.z_min = z_min
         self.z_max = z_max
@@ -49,8 +51,11 @@ class ADSolver:
         self.t_min = t_min
         self.t_max = t_max
         self.dt = dt
-        self.w = w
         self.kappa = kappa
+        if torch.is_tensor(w):
+            self.w = w
+        else:
+            self.w = torch.tensor(w)
 
         self.z = torch.arange(z_min, z_max + self.dz, self.dz)
         self.nlev, = self.z.shape
@@ -74,17 +79,10 @@ class ADSolver:
             self.D2[i, [i - 1, i + 1]] = 1
             self.D2[i, i] = -2
         # for zero flux (Neumann) BC at the top uncomment following two lines
-#         self.D2[self.nlev - 1, self.nlev - 2] = 2
-#         self.D2[self.nlev - 1, self.nlev - 1] = -2
+        # self.D2[self.nlev - 1, self.nlev - 2] = 2
+        # self.D2[self.nlev - 1, self.nlev - 1] = -2
         self.D2 /= self.dz ** 2
 
-        self.D = self.dt * (w * self.D1 - kappa * self.D2)
-
-        # LHS
-        B = torch.eye(self.nlev) + self.D
-
-        Q, self.R = torch.linalg.qr(B)
-        self.QT = Q.T
 
     def solve(self, nsteps=None, source_func=None):
         """Integrates the model for a given number of steps starting from the
@@ -111,25 +109,117 @@ class ADSolver:
             # source_func, _, _ = utils.make_source_func(self)
             source_func = utils.load_model(self)
 
+        # t = 0*dt
+        #---------
         u = torch.zeros((nsteps, self.nlev))
         u[0] = self.initial_condition(self.z)
 
-        # a single forward Euler step
-        source = source_func(u[0])
-        u[1] = (torch.matmul(torch.eye(self.nlev) - self.D, u[0]) -
-        self.dt * source)
+        if self.w.ndim == 0:
+            # if w is constant LHS can be inverted only once
 
-        for n in range(1, nsteps - 1):
+            # t = 1*dt
+            #---------
+            D = self.dt * (self.w * self.D1 - self.kappa * self.D2)
 
-            self.current_time += self.dt
-            source = source_func(u[n])
+            # LHS
+            B = torch.eye(self.nlev) + D
 
-            # RHS multiplied by QT on the left
-            b = torch.matmul(self.QT, (
-                torch.matmul(torch.eye(self.nlev) - self.D, u[n - 1]) -
-                2 * self.dt * source
-            )).reshape(-1, 1)
+            Q, self.R = torch.linalg.qr(B)
+            self.QT = Q.T
 
-            u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
+            # a single forward Euler step
+            source = source_func(u[0])
+            u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
+            self.dt * source)
+
+            # t = n*dt
+            #---------
+            for n in range(1, nsteps - 1):
+
+                self.current_time += self.dt
+                source = source_func(u[n])
+
+                # RHS multiplied by QT on the left
+                b = torch.matmul(self.QT, (
+                    torch.matmul(torch.eye(self.nlev) - D, u[n - 1]) -
+                    2 * self.dt * source
+                )).reshape(-1, 1)
+
+                u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
+
+        elif self.w.ndim == 1:
+            # w is time-dependent (constant with height)
+
+            # t = 1*dt
+            #---------
+            D = self.dt * (self.w[0] * self.D1 - self.kappa * self.D2)
+
+            # a single forward Euler step
+            source = source_func(u[0])
+            u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
+            self.dt * source)
+
+            # t = n*dt
+            #---------
+            for n in range(1, nsteps - 1):
+
+                self.current_time += self.dt
+                source = source_func(u[n])
+
+                DL = self.dt * (self.w[n+1] * self.D1 - self.kappa * self.D2)
+                DR = self.dt * (self.w[n-1] * self.D1 - self.kappa * self.D2)
+
+                # LHS
+                B = torch.eye(self.nlev) + DL
+
+                Q, self.R = torch.linalg.qr(B)
+                self.QT = Q.T
+
+                # RHS multiplied by QT on the left
+                b = torch.matmul(self.QT, (
+                    torch.matmul(torch.eye(self.nlev) - DR, u[n - 1]) -
+                    2 * self.dt * source
+                )).reshape(-1, 1)
+
+                u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
+
+        elif self.w.ndim == 2:
+            # w is time- and height-dependent (w[time, height])
+
+            # t = 1*dt
+            #---------
+            D = self.dt * (torch.matmul(torch.diag(self.w[0]), self.D1) -
+            self.kappa * self.D2)
+
+            # a single forward Euler step
+            source = source_func(u[0])
+            u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
+            self.dt * source)
+
+            # t = n*dt
+            #---------
+            for n in range(1, nsteps - 1):
+
+                self.current_time += self.dt
+                source = source_func(u[n])
+
+                DL = self.dt * (torch.matmul(torch.diag(self.w[n+1]), self.D1) -
+                self.kappa * self.D2)
+                DR = self.dt * (torch.matmul(torch.diag(self.w[n-1]), self.D1) -
+                self.kappa * self.D2)
+
+                # LHS
+                B = torch.eye(self.nlev) + DL
+
+                Q, self.R = torch.linalg.qr(B)
+                self.QT = Q.T
+
+                # RHS multiplied by QT on the left
+                b = torch.matmul(self.QT, (
+                    torch.matmul(torch.eye(self.nlev) - DR, u[n - 1]) -
+                    2 * self.dt * source
+                )).reshape(-1, 1)
+
+                u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
 
         return u
