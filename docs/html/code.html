@@ -197,7 +197,7 @@ Brunt-Vaisala frequency.</p>
 <h2>adsolver<a class="headerlink" href="#adsolver" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt id="qbo1d.adsolver.ADSolver">
-<em class="property">class </em><code class="sig-prename descclassname">qbo1d.adsolver.</code><code class="sig-name descname">ADSolver</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">z_min</span><span class="o">=</span><span class="default_value">17000.0</span></em>, <em class="sig-param"><span class="n">z_max</span><span class="o">=</span><span class="default_value">35000.0</span></em>, <em class="sig-param"><span class="n">dz</span><span class="o">=</span><span class="default_value">250</span></em>, <em class="sig-param"><span class="n">t_min</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">t_max</span><span class="o">=</span><span class="default_value">373248000</span></em>, <em class="sig-param"><span class="n">dt</span><span class="o">=</span><span class="default_value">86400</span></em>, <em class="sig-param"><span class="n">w</span><span class="o">=</span><span class="default_value">1e-05</span></em>, <em class="sig-param"><span class="n">kappa</span><span class="o">=</span><span class="default_value">0.3</span></em>, <em class="sig-param"><span class="n">initial_condition</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#qbo1d.adsolver.ADSolver" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">qbo1d.adsolver.</code><code class="sig-name descname">ADSolver</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">z_min</span><span class="o">=</span><span class="default_value">17000.0</span></em>, <em class="sig-param"><span class="n">z_max</span><span class="o">=</span><span class="default_value">35000.0</span></em>, <em class="sig-param"><span class="n">dz</span><span class="o">=</span><span class="default_value">250</span></em>, <em class="sig-param"><span class="n">t_min</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">t_max</span><span class="o">=</span><span class="default_value">373248000</span></em>, <em class="sig-param"><span class="n">dt</span><span class="o">=</span><span class="default_value">86400</span></em>, <em class="sig-param"><span class="n">w</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">kappa</span><span class="o">=</span><span class="default_value">0.3</span></em>, <em class="sig-param"><span class="n">initial_condition</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#qbo1d.adsolver.ADSolver" title="Permalink to this definition">¶</a></dt>
 <dd><p>Class to solve a one-dimensional advection-diffusion equation with a
 source term.</p>
 <dl class="field-list simple">
@@ -209,7 +209,9 @@ source term.</p>
 <li><p><strong>t_min</strong> (<em>float</em><em>, </em><em>optional</em>) – Initial time [s], by default 0</p></li>
 <li><p><strong>t_max</strong> (<em>float</em><em>, </em><em>optional</em>) – Final time [s], by default 360*12*86400</p></li>
 <li><p><strong>dt</strong> (<em>float</em><em>, </em><em>optional</em>) – Timestep [s], by default 86400</p></li>
-<li><p><strong>w</strong> (<em>float</em><em>, </em><em>optional</em>) – Constant vertical advection [<span class="math notranslate nohighlight">\(\mathrm{m \, s^{-1}}\)</span>], by default 1e-5</p></li>
+<li><p><strong>w</strong> (<em>float/tensor</em><em>, </em><em>optional</em>) – Vertical advection [<span class="math notranslate nohighlight">\(\mathrm{m \, s^{-1}}\)</span>], by default 0.
+Can be constant (scalar), time-dependent (tensor with size time.shape),
+or time- and height-dependent (tensor of size time.shape, z.shape).</p></li>
 <li><p><strong>kappa</strong> (<em>float</em><em>, </em><em>optional</em>) – Constant diffusivity [<span class="math notranslate nohighlight">\(\mathrm{m^{2} \, s^{-1}}\)</span>], by default 3e-1</p></li>
 <li><p><strong>initial_condition</strong> (<em>tensor</em><em>, </em><em>optional</em>) – The unknown profile at t_min, by default None</p></li>
 </ul>
@@ -359,12 +361,13 @@ default, torch.nn.Module uses the forward method.</p>
 <span id="stochastic-forcing"></span><h2>stochastic_forcing<a class="headerlink" href="#module-qbo1d.stochastic_forcing" title="Permalink to this headline">¶</a></h2>
 <dl class="py class">
 <dt id="qbo1d.stochastic_forcing.WaveSpectrum">
-<em class="property">class </em><code class="sig-prename descclassname">qbo1d.stochastic_forcing.</code><code class="sig-name descname">WaveSpectrum</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">solver</span></em>, <em class="sig-param"><span class="n">sfe</span><span class="o">=</span><span class="default_value">0.0037</span></em>, <em class="sig-param"><span class="n">sfv</span><span class="o">=</span><span class="default_value">1e-08</span></em>, <em class="sig-param"><span class="n">cwe</span><span class="o">=</span><span class="default_value">32</span></em>, <em class="sig-param"><span class="n">cwv</span><span class="o">=</span><span class="default_value">225</span></em>, <em class="sig-param"><span class="n">corr</span><span class="o">=</span><span class="default_value">0.75</span></em>, <em class="sig-param"><span class="n">seed</span><span class="o">=</span><span class="default_value">197</span></em><span class="sig-paren">)</span><a class="headerlink" href="#qbo1d.stochastic_forcing.WaveSpectrum" title="Permalink to this definition">¶</a></dt>
+<em class="property">class </em><code class="sig-prename descclassname">qbo1d.stochastic_forcing.</code><code class="sig-name descname">WaveSpectrum</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">solver</span></em>, <em class="sig-param"><span class="n">Gsa</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">sfe</span><span class="o">=</span><span class="default_value">0.0037</span></em>, <em class="sig-param"><span class="n">sfv</span><span class="o">=</span><span class="default_value">1e-08</span></em>, <em class="sig-param"><span class="n">cwe</span><span class="o">=</span><span class="default_value">32</span></em>, <em class="sig-param"><span class="n">cwv</span><span class="o">=</span><span class="default_value">225</span></em>, <em class="sig-param"><span class="n">corr</span><span class="o">=</span><span class="default_value">0.75</span></em>, <em class="sig-param"><span class="n">seed</span><span class="o">=</span><span class="default_value">197</span></em><span class="sig-paren">)</span><a class="headerlink" href="#qbo1d.stochastic_forcing.WaveSpectrum" title="Permalink to this definition">¶</a></dt>
 <dd><p>A ModelClass for setting up the stochastic source term.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>solver</strong> (<a class="reference internal" href="#qbo1d.adsolver.ADSolver" title="qbo1d.adsolver.ADSolver"><em>ADSolver</em></a>) – A solver instance holding the grid and differentiation matrix</p></li>
+<li><p><strong>Gsa</strong> (<em>float</em><em>, </em><em>optional</em>) – Amplitude of semi-annual oscillation [<span class="math notranslate nohighlight">\(\mathrm{m \, s^{-2}}\)</span>], by default 0</p></li>
 <li><p><strong>sfe</strong> (<em>float</em><em>, </em><em>optional</em>) – Total source flux mean, by default 3.7e-3</p></li>
 <li><p><strong>sfv</strong> (<em>float</em><em>, </em><em>optional</em>) – Total source flux variance, by default 1e-8</p></li>
 <li><p><strong>cwe</strong> (<em>float</em><em>, </em><em>optional</em>) – Spectrum width mean, by default 32</p></li>
@@ -389,6 +392,17 @@ default, torch.nn.Module uses the forward method.</p>
 <dt id="qbo1d.stochastic_forcing.WaveSpectrum.F_func">
 <code class="sig-name descname">F_func</code><a class="headerlink" href="#qbo1d.stochastic_forcing.WaveSpectrum.F_func" title="Permalink to this definition">¶</a></dt>
 <dd><p>An interface for keeping track of the function F in the analytic forcing</p>
+<dl class="field-list simple">
+<dt class="field-odd">Type</dt>
+<dd class="field-odd"><p>func</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py attribute">
+<dt id="qbo1d.stochastic_forcing.WaveSpectrum.G_func">
+<code class="sig-name descname">G_func</code><a class="headerlink" href="#qbo1d.stochastic_forcing.WaveSpectrum.G_func" title="Permalink to this definition">¶</a></dt>
+<dd><p>An interface for keeping track of the semi-annual oscillation</p>
 <dl class="field-list simple">
 <dt class="field-odd">Type</dt>
 <dd class="field-odd"><p>func</p>
