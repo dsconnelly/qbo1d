@@ -84,7 +84,7 @@ class ADSolver:
         self.D2 /= self.dz ** 2
 
 
-    def solve(self, nsteps=None, source_func=None):
+    def solve(self, nsteps=None, source_func=None, return_drag=False):
         """Integrates the model for a given number of steps starting from the
         initial conditions.
 
@@ -94,6 +94,8 @@ class ADSolver:
             number of time steps to take in the integration, by default None
         source_func : function, optional
             The source term as an explicit function of the unknown only, by default None
+        return_drag : boolean, optional
+            If True, the drag at each time step will also be returned
 
         Returns
         -------
@@ -108,11 +110,17 @@ class ADSolver:
         if source_func is None:
             # source_func, _, _ = utils.make_source_func(self)
             source_func = utils.load_model(self)
+            
+        self.current_time = 0
+        
 
         # t = 0*dt
         #---------
         u = torch.zeros((nsteps, self.nlev))
         u[0] = self.initial_condition(self.z)
+        
+        if return_drag:
+            drag = torch.zeros_like(u)
 
         if self.w.ndim == 0:
             # if w is constant LHS can be inverted only once
@@ -131,6 +139,9 @@ class ADSolver:
             source = source_func(u[0])
             u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
             self.dt * source)
+            
+            if return_drag:
+                drag[0] = source
 
             # t = n*dt
             #---------
@@ -138,6 +149,9 @@ class ADSolver:
 
                 self.current_time += self.dt
                 source = source_func(u[n])
+                
+                if return_drag:
+                    drag[n] = source
 
                 # RHS multiplied by QT on the left
                 b = torch.matmul(self.QT, (
@@ -158,6 +172,9 @@ class ADSolver:
             source = source_func(u[0])
             u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
             self.dt * source)
+            
+            if return_drag:
+                drag[0] = source
 
             # t = n*dt
             #---------
@@ -165,6 +182,8 @@ class ADSolver:
 
                 self.current_time += self.dt
                 source = source_func(u[n])
+                if return_drag:
+                    drag[n] = source
 
                 DL = self.dt * (self.w[n+1] * self.D1 - self.kappa * self.D2)
                 DR = self.dt * (self.w[n-1] * self.D1 - self.kappa * self.D2)
@@ -221,5 +240,10 @@ class ADSolver:
                 )).reshape(-1, 1)
 
                 u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
+                
+        if return_drag:
+            drag[-1] = source_func(u[-1])
+            
+            return u, drag
 
         return u

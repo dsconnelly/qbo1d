@@ -278,14 +278,16 @@ def estimate_amplitude(time, z, u, height=25e3, spinup=0, bw_filter=False):
     return torch.std(u)
 
 
-def simple_display(time, z, u, ax=None):
+def simple_display(time, z, u, ax=None, cmax=None):
     if ax is None:
         fig, ax = plt.subplots()
         fig.set_size_inches(8, 4)
 
     years = time / (360 * 86400)
     kms = z / 1000
-    cmax = abs(u).max()
+    
+    if cmax is None:
+        cmax = abs(u).max()
 
     ax.contourf(
         years, kms, u,
