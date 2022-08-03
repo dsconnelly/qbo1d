@@ -1,6 +1,7 @@
 import torch
 
 from . import utils
+from . import stochastic_forcing
 
 
 class ADSolver:
@@ -245,5 +246,140 @@ class ADSolver:
             drag[-1] = source_func(u[-1])
             
             return u, drag
+
+        return u
+
+
+    def emulate(self, nsteps=None, source_func=None,
+    sfe=3.7e-3, sfv=9e-8, cwe=32, cwv=256, corr=0.75, seed=int(21*7+7+1),
+    sf=None, cw=None):
+        """The difference compared to solve is that for the emulation
+        we took source term to be a function of (u, sf, cw), so the source
+        requires an augmented input.
+        """
+
+        if nsteps is None:
+            nsteps, = self.time.shape
+
+        if source_func is None:
+            # source_func, _, _ = utils.make_source_func(self)
+            source_func = utils.load_model(self)
+
+        if sf is None and cw is None:
+            sf, cw = stochastic_forcing.sample_sf_cw(n=nsteps,
+            sfe=sfe, sfv=sfv, cwe=cwe, cwv=cwv, corr=corr, seed=seed)
+
+        # t = 0*dt
+        #---------
+        u = torch.zeros((nsteps, self.nlev))
+        u[0] = self.initial_condition(self.z)
+
+        if self.w.ndim == 0:
+            # if w is constant LHS can be inverted only once
+
+            # t = 1*dt
+            #---------
+            D = self.dt * (self.w * self.D1 - self.kappa * self.D2)
+
+            # LHS
+            B = torch.eye(self.nlev) + D
+
+            Q, self.R = torch.linalg.qr(B)
+            self.QT = Q.T
+
+            # a single forward Euler step
+            source = source_func(torch.hstack((u[0], sf[0], cw[0])))
+            u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
+            self.dt * source)
+
+            # t = n*dt
+            #---------
+            for n in range(1, nsteps - 1):
+
+                self.current_time += self.dt
+                source = source_func(torch.hstack((u[n], sf[n], cw[n])))
+
+                # RHS multiplied by QT on the left
+                b = torch.matmul(self.QT, (
+                    torch.matmul(torch.eye(self.nlev) - D, u[n - 1]) -
+                    2 * self.dt * source
+                )).reshape(-1, 1)
+
+                u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
+
+        elif self.w.ndim == 1:
+            # w is time-dependent (constant with height)
+
+            # t = 1*dt
+            #---------
+            D = self.dt * (self.w[0] * self.D1 - self.kappa * self.D2)
+
+            # a single forward Euler step
+            source = source_func(torch.hstack((u[0], sf[0], cw[0])))
+            u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
+            self.dt * source)
+
+            # t = n*dt
+            #---------
+            for n in range(1, nsteps - 1):
+
+                self.current_time += self.dt
+                source = source_func(torch.hstack((u[n], sf[n], cw[n])))
+
+                DL = self.dt * (self.w[n+1] * self.D1 - self.kappa * self.D2)
+                DR = self.dt * (self.w[n-1] * self.D1 - self.kappa * self.D2)
+
+                # LHS
+                B = torch.eye(self.nlev) + DL
+
+                Q, self.R = torch.linalg.qr(B)
+                self.QT = Q.T
+
+                # RHS multiplied by QT on the left
+                b = torch.matmul(self.QT, (
+                    torch.matmul(torch.eye(self.nlev) - DR, u[n - 1]) -
+                    2 * self.dt * source
+                )).reshape(-1, 1)
+
+                u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
+
+        elif self.w.ndim == 2:
+            # w is time- and height-dependent (w[time, height])
+
+            # t = 1*dt
+            #---------
+            D = self.dt * (torch.matmul(torch.diag(self.w[0]), self.D1) -
+            self.kappa * self.D2)
+
+            # a single forward Euler step
+            source = source_func(torch.hstack((u[0], sf[0], cw[0])))
+            u[1] = (torch.matmul(torch.eye(self.nlev) - D, u[0]) -
+            self.dt * source)
+
+            # t = n*dt
+            #---------
+            for n in range(1, nsteps - 1):
+
+                self.current_time += self.dt
+                source = source_func(torch.hstack((u[n], sf[n], cw[n])))
+
+                DL = self.dt * (torch.matmul(torch.diag(self.w[n+1]), self.D1) -
+                self.kappa * self.D2)
+                DR = self.dt * (torch.matmul(torch.diag(self.w[n-1]), self.D1) -
+                self.kappa * self.D2)
+
+                # LHS
+                B = torch.eye(self.nlev) + DL
+
+                Q, self.R = torch.linalg.qr(B)
+                self.QT = Q.T
+
+                # RHS multiplied by QT on the left
+                b = torch.matmul(self.QT, (
+                    torch.matmul(torch.eye(self.nlev) - DR, u[n - 1]) -
+                    2 * self.dt * source
+                )).reshape(-1, 1)
+
+                u[n + 1] = torch.triangular_solve(b, self.R).solution.flatten()
 
         return u
